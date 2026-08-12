@@ -11,7 +11,9 @@ export default defineComponent({
       process.env.EIGHTX8_CRM_TENANT;
 
     const actionToken = process.env.EIGHTX8_ACTION_TOKEN;
-    const groupId = process.env.EIGHTX8_AGENT_GROUP_ID;
+    // TEST COPY: pinned to "Test Agent Group" (3350) so runs never touch the
+    // production group configured in EIGHTX8_AGENT_GROUP_ID.
+    const groupId = "3350";
 
     if (!tenantId) {
       throw new Error("Missing EIGHTX8_TENANT_ID or EIGHTX8_CRM_TENANT.");
