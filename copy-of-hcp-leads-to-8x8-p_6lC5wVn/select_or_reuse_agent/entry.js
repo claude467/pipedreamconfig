@@ -1,5 +1,10 @@
 export default defineComponent({
-  async run({ steps }) {
+  props: {
+    unassignedStore: {
+      type: "data_store",
+    },
+  },
+  async run({ steps, $ }) {
     const mapping = steps.get_mapping?.$return_value || null;
 
     // If this lead was already assigned before, keep the same agent.
@@ -24,18 +29,30 @@ export default defineComponent({
     // 8x8 agent-status 4 = WAIT_TRANSACT (available, waiting for work).
     const availableAgents = agentList.filter((agent) => agent.status === 4);
 
-    // Prefer available agents; if none are available, fall back to the full
-    // group so the lead is never left unassigned.
-    const candidates =
-      availableAgents.length > 0 ? availableAgents : agentList;
+    // No one available: park the lead for later processing and stop the
+    // workflow instead of assigning to an unavailable agent.
+    if (availableAgents.length === 0) {
+      const lead = steps.normalize_lead.$return_value;
+      const storeKey = `no_agents:${lead.hcpLeadId}`;
 
-    const mode =
-      availableAgents.length > 0
-        ? "new_random_assignment_available"
-        : "fallback_random_none_available";
+      await this.unassignedStore.set(storeKey, {
+        storedAt: new Date().toISOString(),
+        event: steps.trigger.event?.event || "",
+        groupId: steps.get_agents_by_group.$return_value.groupId,
+        totalAgentsInGroup: agentList.length,
+        lead,
+      });
+
+      $.flow.exit(
+        `No available agents in group ${steps.get_agents_by_group.$return_value.groupId}. Lead ${lead.hcpLeadId} parked under "${storeKey}".`
+      );
+      return;
+    }
+
+    const mode = "new_random_assignment_available";
 
     const selectedAgent =
-      candidates[Math.floor(Math.random() * candidates.length)];
+      availableAgents[Math.floor(Math.random() * availableAgents.length)];
 
     if (!selectedAgent?.agentId) {
       throw new Error("Selected agent is missing agentId.");

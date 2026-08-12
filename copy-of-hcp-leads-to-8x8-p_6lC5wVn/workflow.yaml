@@ -32,6 +32,9 @@ steps:
 - namespace: select_or_reuse_agent
   runtime: nodejs20.x
   uses: "./select_or_reuse_agent/entry.js"
+  props:
+    unassignedStore:
+      storeId: ds_Zrujo8r
 - namespace: upsert_tasks_for_assignees
   runtime: nodejs20.x
   uses: "./upsert_tasks_for_assignees/entry.js"
