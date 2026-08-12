@@ -20,6 +20,12 @@ steps:
     dataStore:
       storeId: ds_Zrujo8r
     key: "{{steps.normalize_lead.$return_value.hcpLeadId}}"
+- namespace: check_business_hours
+  runtime: nodejs20.x
+  uses: "./check_business_hours/entry.js"
+  props:
+    afterHoursStore:
+      storeId: ds_Zrujo8r
 - namespace: get_agents_by_group
   runtime: nodejs20.x
   uses: "./get_agents_by_group/entry.js"
