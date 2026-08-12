@@ -1,0 +1,56 @@
+schema: workflow/2022.04
+name: HCP Leads to 8x8
+settings:
+  error_notification: true
+  lambda_memory: 2048
+  lambda_timeout: 240
+triggers:
+- id: dc_lVupVyE
+steps:
+- namespace: normalize_lead
+  runtime: nodejs20.x
+  uses: "./normalize_lead/entry.js"
+- namespace: get_hcp_company
+  runtime: nodejs20.x
+  uses: "./get_hcp_company/entry.js"
+- namespace: create_or_find_8x8_customer
+  runtime: nodejs20.x
+  uses: "./create_or_find_8x8_customer/entry.js"
+- namespace: get_mapping
+  runtime: nodejs20.x
+  uses: data_stores-get-record-or-create@0.0.15
+  _props_cursor: dyp_aKUgvAW6
+  props:
+    dataStore:
+      storeId: ds_Zrujo8r
+    key: "{{steps.normalize_lead.$return_value.hcpLeadId}}"
+- namespace: get_agents_by_group
+  runtime: nodejs20.x
+  uses: "./get_agents_by_group/entry.js"
+- namespace: select_or_reuse_agent
+  runtime: nodejs20.x
+  uses: "./select_or_reuse_agent/entry.js"
+- namespace: upsert_tasks_for_assignees
+  runtime: nodejs20.x
+  uses: "./upsert_tasks_for_assignees/entry.js"
+- namespace: save_mapping
+  runtime: nodejs20.x
+  uses: data_stores-add-update-record@0.0.12
+  props:
+    dataStore:
+      storeId: ds_Zrujo8r
+    key: "{{steps.normalize_lead.$return_value.hcpLeadId}}"
+    value: |-
+      {
+        "customerId": "{{steps.create_or_find_8x8_customer.$return_value.customerId}}",
+        "hcpTenantName": "{{steps.get_hcp_company.$return_value.tenantName}}",
+        "agentGroupId": "{{steps.get_agents_by_group.$return_value.groupId}}",
+        "assignedAgentId": "{{steps.select_or_reuse_agent.$return_value.selectedAgentId}}",
+        "assignedAgentName": "{{steps.select_or_reuse_agent.$return_value.selectedAgentName}}",
+        "assignmentMode": "{{steps.select_or_reuse_agent.$return_value.mode}}",
+        "taskId": "{{steps.upsert_task_for_selected_agent.$return_value.taskId}}",
+        "hcpLeadUrl": "{{steps.normalize_lead.$return_value.hcpLeadUrl}}",
+        "lastEvent": "{{steps.trigger.event.event}}",
+        "lastSyncedAt": "{{steps.trigger.context.ts}}"
+      }
+
