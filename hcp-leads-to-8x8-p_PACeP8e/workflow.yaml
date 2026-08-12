@@ -5,7 +5,7 @@ settings:
   lambda_memory: 2048
   lambda_timeout: 240
 triggers:
-- id: dc_lVupVyE
+- id: hi_nlHwvqj
 steps:
 - namespace: normalize_lead
   runtime: nodejs20.x
