@@ -2,4 +2,11 @@ schema: workflow/2022.04
 name: Parked Leads Drainer
 settings:
   error_notification: true
+steps:
+- namespace: drain_parked_leads
+  runtime: nodejs20.x
+  uses: "./drain_parked_leads/entry.js"
+  props:
+    parkedStore:
+      storeId: ds_Zrujo8r
 
