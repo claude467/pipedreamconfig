@@ -1,5 +1,6 @@
 schema: workflow/2022.04
 name: Copy of HCP Leads to 8x8
+inactive: true
 triggers:
 - id: hi_wWH5EL5
 steps:

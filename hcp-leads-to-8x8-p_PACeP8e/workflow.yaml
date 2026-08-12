@@ -29,7 +29,7 @@ steps:
   uses: "./check_business_hours/entry.js"
   props:
     afterHoursStore:
-      storeId: ds_Zrujo8r
+      storeId: ds_ZrujX5G
 - namespace: get_agents_by_group
   runtime: nodejs20.x
   uses: "./get_agents_by_group/entry.js"
@@ -38,7 +38,7 @@ steps:
   uses: "./select_or_reuse_agent/entry.js"
   props:
     unassignedStore:
-      storeId: ds_Zrujo8r
+      storeId: ds_k2u6Gpp
 - namespace: upsert_tasks_for_assignees
   runtime: nodejs20.x
   uses: "./upsert_tasks_for_assignees/entry.js"
