@@ -1,11 +1,7 @@
 schema: workflow/2022.04
-name: HCP Leads to 8x8
-settings:
-  error_notification: true
-  lambda_memory: 2048
-  lambda_timeout: 240
+name: Copy of HCP Leads to 8x8
 triggers:
-- id: dc_lVupVyE
+- id: hi_wWH5EL5
 steps:
 - namespace: normalize_lead
   runtime: nodejs20.x
