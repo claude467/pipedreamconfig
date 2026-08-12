@@ -1,5 +1,11 @@
+const ALLOWED_COMPANY_IDS = new Set([
+  "143e13ab-943d-483b-b9f9-14821c53c849",
+  "4184e6d4-00c1-44d7-b786-db1ed2d5f1d3",
+  "ccce1f7a-f510-4b9b-b571-07876258fc8b",
+]);
+
 export default defineComponent({
-  async run({ steps }) {
+  async run({ steps, $ }) {
     const event = steps.trigger.event || {};
     const lead = event.lead || {};
 
@@ -11,6 +17,13 @@ export default defineComponent({
     const address = lead.address || {};
 
     const companyId = event.company_id || "";
+
+    if (!ALLOWED_COMPANY_IDS.has(companyId)) {
+      $.flow.exit(
+        `Skipping lead ${lead.id}: company_id "${companyId}" is not in the allowed list.`
+      );
+      return;
+    }
 
     const tenantNameMap = {
       "ccce1f7a-f510-4b9b-b571-07876258fc8b": "Premium Service Brands",

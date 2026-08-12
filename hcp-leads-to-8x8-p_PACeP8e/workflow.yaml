@@ -48,7 +48,7 @@ steps:
         "assignedAgentId": "{{steps.select_or_reuse_agent.$return_value.selectedAgentId}}",
         "assignedAgentName": "{{steps.select_or_reuse_agent.$return_value.selectedAgentName}}",
         "assignmentMode": "{{steps.select_or_reuse_agent.$return_value.mode}}",
-        "taskId": "{{steps.upsert_task_for_selected_agent.$return_value.taskId}}",
+        "taskId": "{{steps.upsert_tasks_for_assignees.$return_value.taskId}}",
         "hcpLeadUrl": "{{steps.normalize_lead.$return_value.hcpLeadUrl}}",
         "lastEvent": "{{steps.trigger.event.event}}",
         "lastSyncedAt": "{{steps.trigger.context.ts}}"
