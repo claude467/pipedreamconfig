@@ -13,6 +13,17 @@ export default defineComponent({
       throw new Error("Missing lead.id from Housecall Pro webhook.");
     }
 
+    const eventName = event.event || "";
+
+    // Tasks are created for new leads only; agents keep tasks current in 8x8
+    // manually, so HCP update events are ignored.
+    if (eventName && eventName !== "lead.created") {
+      $.flow.exit(
+        `Skipping event "${eventName}" for lead ${lead.id}: tasks are created for new leads only.`
+      );
+      return;
+    }
+
     const customer = lead.customer || {};
     const address = lead.address || {};
 

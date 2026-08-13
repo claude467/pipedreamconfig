@@ -77,7 +77,6 @@ export default defineComponent({
     },
   },
   async run({ steps, $ }) {
-    const eventName = steps.trigger.event.event;
     const lead = steps.normalize_lead.$return_value;
 
     const customerId =
@@ -144,13 +143,32 @@ export default defineComponent({
       .filter(Boolean)
       .join("\n");
 
-    let action;
-    let xml;
+    // A task already exists for this lead (e.g. a replay race after the task
+    // was confirmed): never create another and never modify it - agents
+    // manage task content and status manually in 8x8.
+    if (existingTaskId) {
+      await this.parkedStore.delete(`after_hours:${lead.hcpLeadId}`);
+      await this.parkedStore.delete(`no_agents:${lead.hcpLeadId}`);
 
-    if (eventName === "lead.created" || !existingTaskId) {
-      action = "created_task";
+      return {
+        action: "skipped_existing_task",
+        customerId,
+        taskId: existingTaskId,
+        assignedAgentId: selectedAgentId,
+        assignedAgentName: selectedAgentName,
+        assignmentMode: steps.select_or_reuse_agent.$return_value.mode,
+        agentGroupId: steps.get_agents_by_group.$return_value.groupId,
+        tenantName,
+        subject,
+        dueDate,
+        hcpLeadUrl,
+        rawResponse: null,
+      };
+    }
 
-      xml = `
+    const action = "created_task";
+
+    const xml = `
 <WAPI>
   <TENANT>${escapeXml(process.env.EIGHTX8_CRM_TENANT)}</TENANT>
   <USERNAME>${escapeXml(process.env.EIGHTX8_CRM_USERNAME)}</USERNAME>
@@ -170,31 +188,9 @@ export default defineComponent({
     <DUEDATE>${escapeXml(dueDate)}</DUEDATE>
   </COMMAND>
 </WAPI>`.trim();
-    } else {
-      action = "updated_task";
-
-      xml = `
-<WAPI>
-  <TENANT>${escapeXml(process.env.EIGHTX8_CRM_TENANT)}</TENANT>
-  <USERNAME>${escapeXml(process.env.EIGHTX8_CRM_USERNAME)}</USERNAME>
-  <PASSWORD>${escapeXml(process.env.EIGHTX8_CRM_PASSWORD)}</PASSWORD>
-
-  <COMMAND OBJECT="Task" ACTION="Modify">
-    <TASKNUM>${escapeXml(existingTaskId)}</TASKNUM>
-    <SUBJECT>${escapeXml(subject)}</SUBJECT>
-    <DESCRIPTION>${escapeXml(description)}</DESCRIPTION>
-    <TASK_STATUS>Pending</TASK_STATUS>
-    <ASSIGNEDTO>${escapeXml(selectedAgentId)}</ASSIGNEDTO>
-    <MIDDLEWARE_URL>${escapeXml(hcpLeadUrl)}</MIDDLEWARE_URL>
-    <PHONE>${escapeXml(lead.phoneDigits)}</PHONE>
-    <EMAIL>${escapeXml(lead.email)}</EMAIL>
-    <DUEDATE>${escapeXml(dueDate)}</DUEDATE>
-  </COMMAND>
-</WAPI>`.trim();
-    }
 
     const responseText = await sendWapi(xml, $);
-    const taskId = existingTaskId || extractTaskId(responseText);
+    const taskId = extractTaskId(responseText);
 
     if (!taskId) {
       throw new Error(

@@ -134,7 +134,10 @@ export default defineComponent({
       }
 
       const body = {
-        event: record.event || "lead.created",
+        // Always replay as lead.created: the live workflow processes creation
+        // events only, and a replay exists to create the missing task. The
+        // original event name stays in the parked record for reference.
+        event: "lead.created",
         company_id: record.lead.companyId || "",
         company_name: record.lead.hcpTenantName || "",
         event_occurred_at: record.lead.eventOccurredAt || "",
