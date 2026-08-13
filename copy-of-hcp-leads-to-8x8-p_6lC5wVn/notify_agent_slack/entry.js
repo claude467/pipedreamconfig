@@ -64,9 +64,8 @@ export default defineComponent({
     const lines = [
       `:telephone_receiver: *New lead assigned to you*`,
       [
+        task.tenantName,
         `Lead #${lead.hcpLeadNumber || lead.hcpLeadId}`,
-        lead.fullName,
-        lead.locationName,
       ]
         .filter(Boolean)
         .join(" — "),
