@@ -4,15 +4,6 @@ import { axios } from "@pipedream/platform";
 // never fail the run: the task already exists in 8x8, so every problem here
 // (missing token, unmapped agent, Slack outage) logs and continues.
 
-function formatCurrency(cents) {
-  const value = Number(cents || 0);
-  if (!Number.isFinite(value)) return "$0.00";
-  return (value / 100).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-  });
-}
-
 async function slackApi(method, token, payload, $) {
   const response = await axios($, {
     method: "POST",
@@ -67,13 +58,19 @@ export default defineComponent({
 
     const lead = steps.normalize_lead.$return_value;
 
+    // Tasks page in 8x8 Agent Workspace (set EIGHTX8_TASKS_URL in Pipedream).
+    const tasksUrl = process.env.EIGHTX8_TASKS_URL || "";
+
     const lines = [
       `:telephone_receiver: *New lead assigned to you*`,
-      `*${task.subject}*`,
-      [lead.fullName, lead.phone, lead.email].filter(Boolean).join("  •  "),
-      [lead.city, lead.state].filter(Boolean).join(", "),
-      `Source: ${lead.leadSource}  •  Amount: ${formatCurrency(lead.totalAmount)}`,
-      task.hcpLeadUrl ? `<${task.hcpLeadUrl}|Open in Housecall Pro>` : "",
+      [
+        `Lead #${lead.hcpLeadNumber || lead.hcpLeadId}`,
+        lead.fullName,
+        lead.locationName,
+      ]
+        .filter(Boolean)
+        .join(" — "),
+      tasksUrl ? `<${tasksUrl}|Open your 8x8 tasks>` : "",
     ].filter(Boolean);
 
     try {
