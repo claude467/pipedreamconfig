@@ -65,4 +65,10 @@ steps:
         "lastEvent": "{{steps.trigger.event.event}}",
         "lastSyncedAt": "{{steps.trigger.context.ts}}"
       }
+- namespace: notify_agent_slack
+  runtime: nodejs20.x
+  uses: "./notify_agent_slack/entry.js"
+  props:
+    slackMap:
+      storeId: ds_EkuqrL8
 
