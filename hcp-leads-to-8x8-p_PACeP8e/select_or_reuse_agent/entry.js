@@ -1,3 +1,48 @@
+import { axios } from "@pipedream/platform";
+
+function escapeXml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+// Count an agent's open tasks in the 8x8 internal CRM. Agents are expected to
+// close tasks when handled, so Pending count reflects current workload.
+async function countPendingTasks(agentId, $) {
+  const xml = `
+<WAPI>
+  <TENANT>${escapeXml(process.env.EIGHTX8_CRM_TENANT)}</TENANT>
+  <USERNAME>${escapeXml(process.env.EIGHTX8_CRM_USERNAME)}</USERNAME>
+  <PASSWORD>${escapeXml(process.env.EIGHTX8_CRM_PASSWORD)}</PASSWORD>
+
+  <COMMAND OBJECT="Task" ACTION="Get">
+    <ASSIGNEDTO>${escapeXml(agentId)}</ASSIGNEDTO>
+    <TASK_STATUS>Pending</TASK_STATUS>
+  </COMMAND>
+</WAPI>`.trim();
+
+  const response = await axios($, {
+    method: "POST",
+    url: `${process.env.EIGHTX8_BASE_URL}/WAPI/wapi.php`,
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    data: new URLSearchParams({ xml_query: xml }).toString(),
+  });
+
+  const responseText =
+    typeof response === "string" ? response : JSON.stringify(response);
+
+  if (!responseText.includes('STATUS="0"')) {
+    throw new Error(`Task query failed: ${responseText.slice(0, 300)}`);
+  }
+
+  return (responseText.match(/<TASKNUM>/g) || []).length;
+}
+
 export default defineComponent({
   props: {
     unassignedStore: {
@@ -18,7 +63,6 @@ export default defineComponent({
       };
     }
 
-    // Otherwise, randomly assign for the first time.
     const agentList =
       steps.get_agents_by_group?.$return_value?.agentList || [];
 
@@ -49,10 +93,44 @@ export default defineComponent({
       return;
     }
 
-    const mode = "new_random_assignment_available";
+    // Least-loaded assignment: count each available agent's Pending tasks and
+    // assign to whoever has the fewest (ties broken randomly).
+    const counts = await Promise.all(
+      availableAgents.map(async (agent) => {
+        try {
+          const pendingTasks = await countPendingTasks(agent.agentId, $);
+          return { agent, pendingTasks };
+        } catch (err) {
+          console.log(
+            `Pending-task count failed for ${agent.agentId} (${agent.name}): ${err.message}`
+          );
+          return { agent, pendingTasks: null };
+        }
+      })
+    );
 
-    const selectedAgent =
-      availableAgents[Math.floor(Math.random() * availableAgents.length)];
+    const usable = counts.filter((c) => c.pendingTasks !== null);
+
+    let selectedAgent;
+    let mode;
+    let selectedAgentPendingTasks = null;
+
+    if (usable.length === 0) {
+      // Every count query failed; never block the lead - fall back to random
+      // among available agents.
+      mode = "new_random_assignment_available";
+      selectedAgent =
+        availableAgents[Math.floor(Math.random() * availableAgents.length)];
+    } else {
+      const minCount = Math.min(...usable.map((c) => c.pendingTasks));
+      const leastLoaded = usable.filter((c) => c.pendingTasks === minCount);
+      const pick =
+        leastLoaded[Math.floor(Math.random() * leastLoaded.length)];
+
+      mode = "new_least_loaded_assignment";
+      selectedAgent = pick.agent;
+      selectedAgentPendingTasks = pick.pendingTasks;
+    }
 
     if (!selectedAgent?.agentId) {
       throw new Error("Selected agent is missing agentId.");
@@ -61,6 +139,13 @@ export default defineComponent({
     return {
       mode,
       availableAgentsInGroup: availableAgents.length,
+      selectedAgentPendingTasks,
+      pendingTaskCounts: Object.fromEntries(
+        counts.map((c) => [
+          `${c.agent.name || c.agent.agentId}`,
+          c.pendingTasks,
+        ])
+      ),
       selectedAgentId: selectedAgent.agentId,
       selectedAgentName: selectedAgent.name || "",
       selectedAgentStatus: selectedAgent.status,
