@@ -9,7 +9,6 @@ const SCHEDULE_ID = 142;
 // simply re-parks them.
 const TARGET_URL = "https://eolwxz2l06fbzyy.m.pipedream.net";
 
-const KEY_PREFIXES = ["after_hours:", "no_agents:"];
 
 // Safety cap per tick; anything beyond this waits for the next run.
 const MAX_PER_RUN = 25;
@@ -23,19 +22,32 @@ const MAX_REPLAY_ATTEMPTS = 10;
 
 export default defineComponent({
   props: {
-    parkedStore: {
+    afterHoursStore: {
+      type: "data_store",
+    },
+    unassignedStore: {
       type: "data_store",
     },
   },
   async run({ $ }) {
-    // 1) Any parked leads?
-    const allKeys = await this.parkedStore.keys();
-    const parkedKeys = allKeys.filter((k) =>
-      KEY_PREFIXES.some((p) => k.startsWith(p))
-    );
+    // 1) Any parked leads? Each lot lives in its own data store.
+    const lots = [
+      { store: this.afterHoursStore, prefix: "after_hours:" },
+      { store: this.unassignedStore, prefix: "no_agents:" },
+    ];
 
-    if (parkedKeys.length === 0) {
-      $.flow.exit("No parked leads in data store.");
+    const parked = [];
+    for (const lot of lots) {
+      const keys = await lot.store.keys();
+      for (const key of keys) {
+        if (key.startsWith(lot.prefix)) {
+          parked.push({ key, store: lot.store });
+        }
+      }
+    }
+
+    if (parked.length === 0) {
+      $.flow.exit("No parked leads in data stores.");
       return;
     }
 
@@ -68,7 +80,7 @@ export default defineComponent({
 
     if (statusCode !== 0) {
       $.flow.exit(
-        `Schedule ${SCHEDULE_ID} not open (status ${statusCode}). ${parkedKeys.length} lead(s) stay parked.`
+        `Schedule ${SCHEDULE_ID} not open (status ${statusCode}). ${parked.length} lead(s) stay parked.`
       );
       return;
     }
@@ -97,7 +109,7 @@ export default defineComponent({
 
     if (availableAgents.length === 0) {
       $.flow.exit(
-        `No available agents in group ${groupId}. ${parkedKeys.length} lead(s) stay parked.`
+        `No available agents in group ${groupId}. ${parked.length} lead(s) stay parked.`
       );
       return;
     }
@@ -109,15 +121,15 @@ export default defineComponent({
     // already-assigned lead takes the sticky-reuse path and just updates its
     // existing task).
     const capacity = Math.min(MAX_PER_RUN, availableAgents.length * PER_AGENT_CAP);
-    const toProcess = parkedKeys.slice(0, capacity);
+    const toProcess = parked.slice(0, capacity);
     const results = [];
 
-    for (const key of toProcess) {
-      const record = await this.parkedStore.get(key);
+    for (const { key, store } of toProcess) {
+      const record = await store.get(key);
 
       if (!record?.lead?.rawLead) {
         // Unusable record; drop it so it doesn't clog every run.
-        await this.parkedStore.delete(key);
+        await store.delete(key);
         results.push({ key, action: "deleted_malformed" });
         continue;
       }
@@ -127,8 +139,8 @@ export default defineComponent({
       if (attempts >= MAX_REPLAY_ATTEMPTS) {
         // The live workflow keeps failing to confirm this lead; shelve it so
         // it stops burning replays but stays inspectable.
-        await this.parkedStore.set(`dead:${key}`, record);
-        await this.parkedStore.delete(key);
+        await store.set(`dead:${key}`, record);
+        await store.delete(key);
         results.push({ key, action: "shelved_after_max_attempts" });
         continue;
       }
@@ -154,7 +166,7 @@ export default defineComponent({
           data: body,
         });
 
-        await this.parkedStore.set(key, {
+        await store.set(key, {
           ...record,
           replayCount: attempts + 1,
           lastReplayedAt: new Date().toISOString(),
@@ -170,14 +182,14 @@ export default defineComponent({
     const failed = results.filter((r) => r.action === "failed").length;
 
     console.log(
-      `Drained ${replayed}/${toProcess.length} parked lead(s); ${failed} failed; ${parkedKeys.length - toProcess.length} deferred to next run.`
+      `Drained ${replayed}/${toProcess.length} parked lead(s); ${failed} failed; ${parked.length - toProcess.length} deferred to next run.`
     );
 
     return {
-      parkedFound: parkedKeys.length,
+      parkedFound: parked.length,
       replayed,
       failed,
-      deferred: parkedKeys.length - toProcess.length,
+      deferred: parked.length - toProcess.length,
       availableAgentsInGroup: availableAgents.length,
       results,
     };
