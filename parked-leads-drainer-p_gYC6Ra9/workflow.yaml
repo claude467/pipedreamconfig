@@ -7,6 +7,8 @@ steps:
   runtime: nodejs20.x
   uses: "./drain_parked_leads/entry.js"
   props:
-    parkedStore:
-      storeId: ds_Zrujo8r
+    afterHoursStore:
+      storeId: ds_ZrujX5G
+    unassignedStore:
+      storeId: ds_k2u6Gpp
 

@@ -36,11 +36,15 @@ steps:
   props:
     unassignedStore:
       storeId: ds_Zrujo8r
+    slackMap:
+      storeId: ds_EkuqrL8
 - namespace: upsert_tasks_for_assignees
   runtime: nodejs20.x
   uses: "./upsert_tasks_for_assignees/entry.js"
   props:
-    parkedStore:
+    afterHoursStore:
+      storeId: ds_Zrujo8r
+    unassignedStore:
       storeId: ds_Zrujo8r
 - namespace: save_mapping
   runtime: nodejs20.x

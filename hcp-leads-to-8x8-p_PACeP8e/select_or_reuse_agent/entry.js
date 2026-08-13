@@ -43,9 +43,18 @@ async function countPendingTasks(agentId, $) {
   return (responseText.match(/<TASKNUM>/g) || []).length;
 }
 
+// Alert the ops channel when an agent's open-task count exceeds this.
+const OVERLOAD_THRESHOLD = 5;
+
+// At most one overload alert per agent per hour (the step runs on every lead).
+const OVERLOAD_ALERT_COOLDOWN_MS = 60 * 60 * 1000;
+
 export default defineComponent({
   props: {
     unassignedStore: {
+      type: "data_store",
+    },
+    slackMap: {
       type: "data_store",
     },
   },
@@ -111,6 +120,72 @@ export default defineComponent({
 
     const usable = counts.filter((c) => c.pendingTasks !== null);
 
+    // Workload alert: post to the ops channel when an agent is carrying more
+    // than OVERLOAD_THRESHOLD open tasks, throttled per agent. Fail-open -
+    // alerting problems never block assignment.
+    const overloaded = usable.filter(
+      (c) => c.pendingTasks > OVERLOAD_THRESHOLD
+    );
+
+    const slackToken = process.env.SLACK_BOT_TOKEN;
+    const alertChannel = process.env.SLACK_ALERT_CHANNEL_ID;
+
+    if (overloaded.length > 0 && (!slackToken || !alertChannel)) {
+      console.log(
+        `OVERLOAD ALERT SKIPPED (missing SLACK_BOT_TOKEN or SLACK_ALERT_CHANNEL_ID): ${overloaded
+          .map((c) => `${c.agent.name}=${c.pendingTasks}`)
+          .join(", ")}`
+      );
+    } else {
+      for (const { agent, pendingTasks } of overloaded) {
+        try {
+          const alertKey = `overload_alert:${agent.agentId}`;
+          const lastAlert = await this.unassignedStore.get(alertKey);
+
+          if (
+            lastAlert?.lastAlertedAt &&
+            Date.now() - new Date(lastAlert.lastAlertedAt).getTime() <
+              OVERLOAD_ALERT_COOLDOWN_MS
+          ) {
+            continue;
+          }
+
+          const mapEntry = await this.slackMap.get(agent.agentId);
+          const memberId =
+            typeof mapEntry === "string" ? mapEntry : mapEntry?.slack;
+          const who = memberId
+            ? `<@${memberId}> (${agent.name})`
+            : `*${agent.name || agent.agentId}*`;
+
+          const response = await axios($, {
+            method: "POST",
+            url: "https://slack.com/api/chat.postMessage",
+            headers: {
+              Authorization: `Bearer ${slackToken}`,
+              "Content-Type": "application/json; charset=utf-8",
+            },
+            data: {
+              channel: alertChannel,
+              text: `:warning: Agent workload alert: ${who} has ${pendingTasks} pending tasks.`,
+            },
+          });
+
+          if (!response?.ok) {
+            throw new Error(response?.error || "unknown Slack error");
+          }
+
+          await this.unassignedStore.set(alertKey, {
+            lastAlertedAt: new Date().toISOString(),
+            pendingTasks,
+          });
+        } catch (err) {
+          console.log(
+            `OVERLOAD ALERT FAILED for ${agent.agentId} (${agent.name}): ${err.message}`
+          );
+        }
+      }
+    }
+
     let selectedAgent;
     let mode;
     let selectedAgentPendingTasks = null;
@@ -140,6 +215,10 @@ export default defineComponent({
       mode,
       availableAgentsInGroup: availableAgents.length,
       selectedAgentPendingTasks,
+      overloadedAgents: overloaded.map((c) => ({
+        name: c.agent.name,
+        pendingTasks: c.pendingTasks,
+      })),
       pendingTaskCounts: Object.fromEntries(
         counts.map((c) => [
           `${c.agent.name || c.agent.agentId}`,

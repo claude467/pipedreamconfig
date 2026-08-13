@@ -72,7 +72,10 @@ function extractTaskId(responseText) {
 
 export default defineComponent({
   props: {
-    parkedStore: {
+    afterHoursStore: {
+      type: "data_store",
+    },
+    unassignedStore: {
       type: "data_store",
     },
   },
@@ -147,8 +150,8 @@ export default defineComponent({
     // was confirmed): never create another and never modify it - agents
     // manage task content and status manually in 8x8.
     if (existingTaskId) {
-      await this.parkedStore.delete(`after_hours:${lead.hcpLeadId}`);
-      await this.parkedStore.delete(`no_agents:${lead.hcpLeadId}`);
+      await this.afterHoursStore.delete(`after_hours:${lead.hcpLeadId}`);
+      await this.unassignedStore.delete(`no_agents:${lead.hcpLeadId}`);
 
       return {
         action: "skipped_existing_task",
@@ -201,8 +204,8 @@ export default defineComponent({
     // Task confirmed: this lead is no longer parked. The drainer deliberately
     // does NOT delete parked keys - a lead leaves the lot only here, once its
     // task provably exists (deleting a missing key is a harmless no-op).
-    await this.parkedStore.delete(`after_hours:${lead.hcpLeadId}`);
-    await this.parkedStore.delete(`no_agents:${lead.hcpLeadId}`);
+    await this.afterHoursStore.delete(`after_hours:${lead.hcpLeadId}`);
+    await this.unassignedStore.delete(`no_agents:${lead.hcpLeadId}`);
 
     return {
       action,
