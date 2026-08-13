@@ -14,6 +14,13 @@ const KEY_PREFIXES = ["after_hours:", "no_agents:"];
 // Safety cap per tick; anything beyond this waits for the next run.
 const MAX_PER_RUN = 25;
 
+// Never wake more leads than available agents can plausibly absorb per tick.
+const PER_AGENT_CAP = 3;
+
+// A lead replayed this many times without the live workflow confirming a task
+// (which deletes its key) gets shelved under "dead:" for manual review.
+const MAX_REPLAY_ATTEMPTS = 10;
+
 export default defineComponent({
   props: {
     parkedStore: {
@@ -95,8 +102,14 @@ export default defineComponent({
       return;
     }
 
-    // 4) Replay parked leads to the live workflow; delete keys on success.
-    const toProcess = parkedKeys.slice(0, MAX_PER_RUN);
+    // 4) Replay parked leads to the live workflow. The drainer never deletes
+    // a parked key on replay: the live workflow deletes it only after 8x8
+    // confirms the task, so a lead can't be lost to a failed run. Re-parking
+    // and re-replaying the same key is idempotent (set() overwrites; an
+    // already-assigned lead takes the sticky-reuse path and just updates its
+    // existing task).
+    const capacity = Math.min(MAX_PER_RUN, availableAgents.length * PER_AGENT_CAP);
+    const toProcess = parkedKeys.slice(0, capacity);
     const results = [];
 
     for (const key of toProcess) {
@@ -106,6 +119,17 @@ export default defineComponent({
         // Unusable record; drop it so it doesn't clog every run.
         await this.parkedStore.delete(key);
         results.push({ key, action: "deleted_malformed" });
+        continue;
+      }
+
+      const attempts = record.replayCount || 0;
+
+      if (attempts >= MAX_REPLAY_ATTEMPTS) {
+        // The live workflow keeps failing to confirm this lead; shelve it so
+        // it stops burning replays but stays inspectable.
+        await this.parkedStore.set(`dead:${key}`, record);
+        await this.parkedStore.delete(key);
+        results.push({ key, action: "shelved_after_max_attempts" });
         continue;
       }
 
@@ -127,10 +151,14 @@ export default defineComponent({
           data: body,
         });
 
-        await this.parkedStore.delete(key);
-        results.push({ key, action: "replayed" });
+        await this.parkedStore.set(key, {
+          ...record,
+          replayCount: attempts + 1,
+          lastReplayedAt: new Date().toISOString(),
+        });
+        results.push({ key, action: "replayed", attempt: attempts + 1 });
       } catch (err) {
-        // Keep the key; next tick retries.
+        // Keep the key untouched; next tick retries.
         results.push({ key, action: "failed", error: err.message });
       }
     }

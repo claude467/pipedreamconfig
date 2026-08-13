@@ -71,6 +71,11 @@ function extractTaskId(responseText) {
 }
 
 export default defineComponent({
+  props: {
+    parkedStore: {
+      type: "data_store",
+    },
+  },
   async run({ steps, $ }) {
     const eventName = steps.trigger.event.event;
     const lead = steps.normalize_lead.$return_value;
@@ -196,6 +201,12 @@ export default defineComponent({
         `Task ${action} succeeded but task ID was not found. Response: ${responseText}`
       );
     }
+
+    // Task confirmed: this lead is no longer parked. The drainer deliberately
+    // does NOT delete parked keys - a lead leaves the lot only here, once its
+    // task provably exists (deleting a missing key is a harmless no-op).
+    await this.parkedStore.delete(`after_hours:${lead.hcpLeadId}`);
+    await this.parkedStore.delete(`no_agents:${lead.hcpLeadId}`);
 
     return {
       action,
